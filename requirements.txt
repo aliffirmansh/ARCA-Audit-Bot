@@ -1,0 +1,6 @@
+streamlit
+pandas
+faiss-cpu
+sentence-transformers
+groq
+openpyxl
