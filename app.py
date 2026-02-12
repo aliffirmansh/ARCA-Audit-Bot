@@ -84,7 +84,7 @@ with st.sidebar:
 
     # Menu Template Pertanyaan
     st.subheader("📝 Template Pertanyaan")
-    st.write("Klik ikon salin (📋) di pojok kanan teks lalu tempel di kolom chat:")
+    st.write("gunakan pola untuk mendapat hasil yang maksimal:")
 
     with st.expander("1. Pola Definisi"):
         st.code("Apa aturan tentang [topik]?", language=None)
@@ -164,3 +164,4 @@ if prompt := st.chat_input("Tanyakan sesuatu tentang POJK 11..."):
     if source_details:
         assistant_msg["references"] = source_details
     st.session_state.messages.append(assistant_msg)
+
