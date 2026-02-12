@@ -73,13 +73,60 @@ def generate_answer_stream(messages, context):
                 time.sleep(0.02)
             if "</think>" in content: is_thinking = False
 
-# 4. TAMPILAN ANTARMUKA
+# ===================================================================
+# 4. TAMPILAN ANTARMUKA (USER INTERFACE)
+# ===================================================================
 st.title("🤖 ARCA")
 st.caption("Audit Regulator Chat Assistant - POJK No. 11/POJK.03/2022")
 
+# --- SIDEBAR: LOGO, INSTRUKSI, & TEMPLATE ---
+with st.sidebar:
+    # Logo Perusahaan (Ganti URL dengan logo BCA Syariah jika ada)
+    st.image("https://www.bca.co.id/~/media/Images/Logo/BCA/bca-logo.png", width=150)
+    st.title("Pusat Bantuan ARCA")
+    
+    st.info("""
+    ARCA membantu Anda menavigasi POJK 11/2022 secara interaktif. 
+    Gunakan pola pertanyaan di bawah untuk hasil terbaik.
+    """)
+
+    # Menu Template Pertanyaan
+    st.subheader("📝 Template Pertanyaan")
+    st.write("Klik ikon salin (📋) di pojok kanan teks lalu tempel di kolom chat:")
+
+    with st.expander("1. Pola Definisi"):
+        st.code("Apa aturan tentang [topik]?", language=None)
+        
+    with st.expander("2. Validasi Temuan"):
+        st.code("Saya menemukan bahwa [masalah]. Apa ketentuan yang relevan?", language=None)
+        
+    with st.expander("3. Komparatif / Pengecualian"):
+        st.code("Apa perbedaan antara [konsep A] dan [konsep B]?", language=None)
+
+    with st.expander("4. Skenario Hipotetis"):
+        st.code("Bagaimana jika [skenario]? Apa dampaknya menurut regulasi?", language=None)
+        
+    with st.expander("5. Pertanyaan Lanjutan"):
+        st.code("Lalu, bagaimana teknis pelaksanaannya?", language=None)
+
+    st.divider()
+    if st.button("🗑️ Hapus Riwayat Chat"):
+        st.session_state.messages = []
+        st.rerun()
+
+# --- AREA CHAT UTAMA ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+# Jika chat masih kosong, tampilkan pesan selamat datang (Landing)
+if not st.session_state.messages:
+    st.markdown("""
+    ### 👋 Selamat Datang di ARCA!
+    Silakan ajukan pertanyaan terkait regulasi penyelenggaraan Teknologi Informasi. 
+    Anda bisa menggunakan template pola pertanyaan di **samping kiri** untuk membantu merumuskan pertanyaan yang efektif.
+    """)
+
+# Tampilkan riwayat chat
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
@@ -92,23 +139,30 @@ if prompt := st.chat_input("Tanyakan sesuatu tentang POJK 11..."):
     st.chat_message("user").markdown(prompt)
     
     with st.chat_message("assistant"):
-        with st.spinner("ARCA sedang memproses..."):
+        with st.spinner("ARCA sedang menelusuri dokumen..."):
             # 1. Retrieval
             raw_results = search_pojk(prompt)
+            
             highly_relevant = raw_results[raw_results['distance'] <= 6.0]
             if not highly_relevant.empty:
                 final_context_df = highly_relevant
             else:
                 moderately_relevant = raw_results[raw_results['distance'] <= 7.0]
                 final_context_df = moderately_relevant.head(3) if not moderately_relevant.empty else pd.DataFrame()
-        # 2. Generation & Typing Effect
+
+        # 2. Generation & Streaming
         if not final_context_df.empty:
+            display_df = final_context_df.drop_duplicates(subset=['id_sumber']).head(5)
             context_list = final_context_df['teks_konten'].tolist()
+            
             history = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages]
             history.append({"role": "user", "content": prompt})
-            full_response = st.write_stream(generate_answer_stream(history, context_list))
+            
+            # Efek mengetik
+            response = st.write_stream(generate_answer_stream(history, context_list))
+            
+            # Siapkan Referensi
             source_details = "**Referensi Pasal Terkait:**\n"
-            display_df = final_context_df.drop_duplicates(subset=['id_sumber']).head(5)
             for _, row in display_df.iterrows():
                 snippet = row['teks_konten'][:300].replace('\n', ' ')
                 source_details += f"\n📍 **{row['id_sumber']}**\n> {snippet}...\n"
@@ -116,13 +170,13 @@ if prompt := st.chat_input("Tanyakan sesuatu tentang POJK 11..."):
             with st.expander("📚 Lihat Referensi"):
                 st.markdown(source_details)
         else:
-            full_response = "Maaf, ARCA tidak menemukan referensi yang relevan dalam dokumen POJK 11."
-            st.markdown(full_response)
+            response = "Maaf, ARCA tidak menemukan referensi yang relevan dalam dokumen POJK 11 mengenai pertanyaan tersebut."
+            st.markdown(response)
             source_details = None
-
+    
     # 3. Simpan ke Riwayat
     st.session_state.messages.append({"role": "user", "content": prompt})
-    assistant_entry = {"role": "assistant", "content": full_response}
+    assistant_msg = {"role": "assistant", "content": response}
     if source_details:
-        assistant_entry["references"] = source_details
-    st.session_state.messages.append(assistant_entry)
+        assistant_msg["references"] = source_details
+    st.session_state.messages.append(assistant_msg)
