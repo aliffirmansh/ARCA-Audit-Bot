@@ -81,14 +81,6 @@ st.caption("Audit Regulator Chat Assistant - POJK No. 11/POJK.03/2022")
 
 # --- SIDEBAR: LOGO, INSTRUKSI, & TEMPLATE ---
 with st.sidebar:
-    # Logo Perusahaan (Ganti URL dengan logo BCA Syariah jika ada)
-    st.image("https://www.bca.co.id/~/media/Images/Logo/BCA/bca-logo.png", width=150)
-    st.title("Pusat Bantuan ARCA")
-    
-    st.info("""
-    ARCA membantu Anda menavigasi POJK 11/2022 secara interaktif. 
-    Gunakan pola pertanyaan di bawah untuk hasil terbaik.
-    """)
 
     # Menu Template Pertanyaan
     st.subheader("📝 Template Pertanyaan")
@@ -117,14 +109,6 @@ with st.sidebar:
 # --- AREA CHAT UTAMA ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
-# Jika chat masih kosong, tampilkan pesan selamat datang (Landing)
-if not st.session_state.messages:
-    st.markdown("""
-    ### 👋 Selamat Datang di ARCA!
-    Silakan ajukan pertanyaan terkait regulasi penyelenggaraan Teknologi Informasi. 
-    Anda bisa menggunakan template pola pertanyaan di **samping kiri** untuk membantu merumuskan pertanyaan yang efektif.
-    """)
 
 # Tampilkan riwayat chat
 for message in st.session_state.messages:
@@ -173,7 +157,7 @@ if prompt := st.chat_input("Tanyakan sesuatu tentang POJK 11..."):
             response = "Maaf, ARCA tidak menemukan referensi yang relevan dalam dokumen POJK 11 mengenai pertanyaan tersebut."
             st.markdown(response)
             source_details = None
-    
+
     # 3. Simpan ke Riwayat
     st.session_state.messages.append({"role": "user", "content": prompt})
     assistant_msg = {"role": "assistant", "content": response}
