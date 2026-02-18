@@ -77,7 +77,7 @@ def generate_answer_stream(messages, context):
 # 4. TAMPILAN ANTARMUKA (USER INTERFACE)
 # ===================================================================
 st.title("🤖 ARCA")
-st.caption("Audit Regulator Chat Assistant - POJK No. 11/POJK.03/2022")
+st.caption("Auditor Chat Assistant - POJK No. 11/POJK.03/2022")
 
 # --- SIDEBAR: LOGO, INSTRUKSI, & TEMPLATE ---
 with st.sidebar:
@@ -164,4 +164,5 @@ if prompt := st.chat_input("Tanyakan sesuatu tentang POJK 11..."):
     if source_details:
         assistant_msg["references"] = source_details
     st.session_state.messages.append(assistant_msg)
+
 
