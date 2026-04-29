@@ -175,10 +175,6 @@ st.caption("**Audit Regulator Chat Assistant** · POJK No. 11/03/2022")
 
 # --- Sidebar ---
 with st.sidebar:
-    st.markdown("###🤖 ARCA")
-    st.markdown("*Audit Regulator Chat Assistant*")
-    st.divider()
-
     # Template Pertanyaan
     st.subheader("📝 Template Pertanyaan")
     st.write("Gunakan pola berikut untuk hasil optimal:")
