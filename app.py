@@ -12,7 +12,7 @@ from groq import Groq
 st.set_page_config(
     page_title="ARCA - Audit Regulation Chat Assistant",
     layout="centered",
-    page_icon="⚖️",
+    page_icon="🤖",
     initial_sidebar_state="expanded"
 )
 
@@ -206,7 +206,7 @@ if not st.session_state.messages:
             "**POJK No. 11/POJK.03/2022** tentang Penyelenggaraan Teknologi Informasi "
             "oleh Bank Umum.\n\n"
             "Silakan ajukan pertanyaan Anda seputar regulasi audit TI perbankan. "
-            "Gunakan template di sidebar untuk hasil yang lebih optimal. 💬"
+            "Gunakan template di sidebar untuk hasil yang lebih optimal."
         )
 
 # Tampilkan riwayat chat
