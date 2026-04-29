@@ -170,25 +170,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- Header ---
-st.title("⚖️ ARCA")
-st.caption("**Audit Regulation Chat Assistant** · POJK No. 11/POJK.03/2022")
-
-# Badge konfigurasi sistem
-st.markdown(
-    '<span class="system-badge badge-green">● Dataset: Regulasi Only</span> '
-    '<span class="system-badge badge-blue">Threshold: 5.5</span> '
-    '<span class="system-badge badge-gray">LLM: Qwen 32B</span>',
-    unsafe_allow_html=True
-)
-st.divider()
+st.title("🤖 ARCA")
+st.caption("**Audit Regulator Chat Assistant** · POJK No. 11/03/2022")
 
 # --- Sidebar ---
 with st.sidebar:
-    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/OJK_Logo.svg/320px-OJK_Logo.svg.png",
-             width=120)
-    st.markdown("### ⚖️ ARCA")
-    st.markdown("*Audit Regulation Chat Assistant*")
-    st.caption("Berbasis POJK No. 11/POJK.03/2022 tentang Penyelenggaraan TI oleh Bank Umum")
+    st.markdown("🤖 ARCA")
+    st.markdown("*Audit Regulator Chat Assistant*")
     st.divider()
 
     # Template Pertanyaan
@@ -206,20 +194,9 @@ with st.sidebar:
     with st.expander("5. Pertanyaan Lanjutan"):
         st.code("Lalu, bagaimana teknis pelaksanaannya?", language=None)
 
-    st.divider()
-    st.info(
-        "⚠️ **Catatan:** ARCA hanya menjawab pertanyaan yang berkaitan "
-        "dengan POJK No. 11/POJK.03/2022. Pertanyaan di luar cakupan "
-        "regulasi ini tidak akan dijawab.",
-        icon="ℹ️"
-    )
-    st.divider()
-
     if st.button("🗑️ Hapus Riwayat Chat", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
-
-    st.caption("Dikembangkan untuk keperluan penelitian Tugas Akhir · UIN SGD Bandung 2025")
 
 # --- Area Chat Utama ---
 if "messages" not in st.session_state:
@@ -283,7 +260,6 @@ if prompt := st.chat_input("Tanyakan sesuatu tentang POJK 11..."):
                 jarak   = round(row['distance'], 3)
                 source_details += (
                     f"📍 **{row['id_sumber']}** "
-                    f"*(jarak semantik: {jarak})*\n"
                     f"> {snippet}...\n\n"
                 )
 
