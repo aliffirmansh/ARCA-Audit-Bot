@@ -175,7 +175,7 @@ st.caption("**Audit Regulator Chat Assistant** · POJK No. 11/03/2022")
 
 # --- Sidebar ---
 with st.sidebar:
-    st.markdown("🤖 ARCA")
+    st.markdown("###🤖 ARCA")
     st.markdown("*Audit Regulator Chat Assistant*")
     st.divider()
 
