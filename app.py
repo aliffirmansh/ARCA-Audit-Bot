@@ -203,7 +203,7 @@ for message in st.session_state.messages:
             with st.expander("📚 Lihat Referensi Pasal"):
                 st.markdown(message["references"])
 
-if prompt := st.chat_input("Tanyakan sesuatu tentang POJK 11..."):
+if prompt := st.chat_input("Tanyakan sesuatu pada ARCA"):
 
     st.chat_message("user").markdown(prompt)
 
