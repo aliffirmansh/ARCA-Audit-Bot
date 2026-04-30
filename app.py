@@ -19,14 +19,15 @@ st.set_page_config(
 # ===================================================================
 # KONFIGURASI SISTEM
 # Dataset  : Regulasi Only (pojk_regulasi_only)
-# Threshold: 5.5 (highly relevant) / 7.0 (fallback)
+# Threshold LLM    : 7.0 (longgar) — agar chatbot adaptif
+# Threshold Display: 5.5 (ketat)   — hanya referensi yang benar relevan
 # LLM      : qwen/qwen3-32b
 # ===================================================================
-THRESHOLD_HIGHLY_RELEVANT = 5.5
-THRESHOLD_FALLBACK        = 7.0
-LLM_MODEL                 = "qwen/qwen3-32b"
-TOP_K                     = 10
-MAX_CONTEXT               = 3
+THRESHOLD_DISPLAY = 5.5   # Untuk kolom referensi pasal
+THRESHOLD_LLM     = 7.0   # Untuk konteks yang dikirim ke LLM
+LLM_MODEL         = "qwen/qwen3-32b"
+TOP_K             = 10
+MAX_CONTEXT       = 3
 
 GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 
@@ -58,22 +59,39 @@ def search_pojk(query, k=TOP_K):
 
 def retrieve_context(query):
     """
-    Pipeline retrieval dengan dua threshold:
-    - T5.5: Sangat relevan, ambil semua yang lolos
-    - T7.0: Fallback, ambil top-3 jika tidak ada yang lolos T5.5
-    - Di luar T7.0: Tolak, pertanyaan di luar cakupan POJK 11
+    Pipeline retrieval dengan dua threshold terpisah:
+
+    - THRESHOLD_DISPLAY (5.5): Ketat — hanya untuk ditampilkan
+      di kolom referensi pasal. Jika kosong, kolom referensi
+      disembunyikan.
+
+    - THRESHOLD_LLM (7.0): Longgar — untuk konteks yang dikirim
+      ke LLM agar chatbot tetap adaptif menjawab pertanyaan beragam.
+
+    Jika bahkan THRESHOLD_LLM pun tidak ada yang lolos,
+    pertanyaan ditolak total (benar-benar di luar domain).
+
+    Return:
+        context_for_llm     : DataFrame konteks untuk LLM
+        context_for_display : DataFrame referensi untuk ditampilkan
+        raw_results         : DataFrame semua hasil retrieval
     """
     raw_results = search_pojk(query)
 
-    highly_relevant = raw_results[raw_results['distance'] <= THRESHOLD_HIGHLY_RELEVANT]
-    if not highly_relevant.empty:
-        return highly_relevant.head(MAX_CONTEXT), raw_results
+    # Referensi display — threshold ketat
+    context_for_display = raw_results[
+        raw_results['distance'] <= THRESHOLD_DISPLAY
+    ].head(MAX_CONTEXT)
 
-    fallback = raw_results[raw_results['distance'] <= THRESHOLD_FALLBACK]
-    if not fallback.empty:
-        return fallback.head(3), raw_results
+    # Konteks LLM — threshold longgar
+    context_for_llm = raw_results[
+        raw_results['distance'] <= THRESHOLD_LLM
+    ].head(MAX_CONTEXT)
 
-    return pd.DataFrame(), raw_results
+    if context_for_llm.empty:
+        return pd.DataFrame(), pd.DataFrame(), raw_results
+
+    return context_for_llm, context_for_display, raw_results
 
 def generate_answer_stream(messages, context_list):
     """
@@ -192,10 +210,11 @@ if prompt := st.chat_input("Tanyakan sesuatu tentang POJK 11..."):
     with st.chat_message("assistant"):
 
         with st.spinner("🔍 Menelusuri regulasi..."):
-            final_context_df, raw_results = retrieve_context(prompt)
+            context_for_llm, context_for_display, raw_results = retrieve_context(prompt)
 
-        if not final_context_df.empty:
-            context_list = final_context_df['teks_konten'].tolist()
+        if not context_for_llm.empty:
+            # Kirim konteks T7.0 ke LLM
+            context_list = context_for_llm['teks_konten'].tolist()
 
             history = [
                 {"role": m["role"], "content": m["content"]}
@@ -207,18 +226,24 @@ if prompt := st.chat_input("Tanyakan sesuatu tentang POJK 11..."):
                 generate_answer_stream(history, context_list)
             )
 
-            display_df     = final_context_df.drop_duplicates(
-                subset=['id_sumber']
-            ).head(MAX_CONTEXT)
-            source_details = "**Referensi Pasal Terkait:**\n\n"
-            for _, row in display_df.iterrows():
-                snippet = row['teks_konten'][:400].replace('\n', ' ')
-                source_details += f"📍 **{row['id_sumber']}**\n> {snippet}...\n\n"
+            # Tampilkan referensi HANYA jika ada yang lolos T5.5
+            if not context_for_display.empty:
+                display_df     = context_for_display.drop_duplicates(
+                    subset=['id_sumber']
+                ).head(MAX_CONTEXT)
+                source_details = "**Referensi Pasal Terkait:**\n\n"
+                for _, row in display_df.iterrows():
+                    snippet = row['teks_konten'][:400].replace('\n', ' ')
+                    source_details += f"📍 **{row['id_sumber']}**\n> {snippet}...\n\n"
 
-            with st.expander("📚 Lihat Referensi Pasal"):
-                st.markdown(source_details)
+                with st.expander("📚 Lihat Referensi Pasal"):
+                    st.markdown(source_details)
+            else:
+                # Tidak ada referensi yang cukup relevan
+                source_details = None
 
         else:
+            # Benar-benar di luar domain
             response = (
                 "Maaf, ARCA tidak menemukan rujukan yang relevan dalam "
                 "**POJK No. 11/POJK.03/2022** untuk pertanyaan tersebut.\n\n"
