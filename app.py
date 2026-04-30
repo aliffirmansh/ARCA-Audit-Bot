@@ -211,6 +211,12 @@ if prompt := st.chat_input("Tanyakan sesuatu pada ARCA"):
 
         with st.spinner("🔍 Menelusuri regulasi..."):
             context_for_llm, context_for_display, raw_results = retrieve_context(prompt)
+            # DEBUG — hapus setelah selesai cek
+st.write(f"LLM context: {len(context_for_llm)} chunk")
+st.write(f"Display context: {len(context_for_display)} chunk")
+if not raw_results.empty:
+    st.write(f"Jarak terdekat: {raw_results['distance'].min():.4f}")
+    st.write(raw_results[['id_sumber', 'distance']].head(5))
 
         if not context_for_llm.empty:
             # Kirim konteks T7.0 ke LLM
