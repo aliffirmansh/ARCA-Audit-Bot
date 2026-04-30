@@ -19,13 +19,14 @@ st.set_page_config(
 # ===================================================================
 # KONFIGURASI SISTEM
 # Dataset  : Regulasi Only (pojk_regulasi_only)
-# Threshold: 5.5 (Ketat) — hasil terbaik dari evaluasi penelitian
+# Threshold: 5.5 (highly relevant) / 7.0 (fallback)
 # LLM      : qwen/qwen3-32b
 # ===================================================================
-THRESHOLD   = 5.5
-LLM_MODEL   = "qwen/qwen3-32b"
-TOP_K       = 10
-MAX_CONTEXT = 3
+THRESHOLD_HIGHLY_RELEVANT = 5.5
+THRESHOLD_FALLBACK        = 7.0
+LLM_MODEL                 = "qwen/qwen3-32b"
+TOP_K                     = 10
+MAX_CONTEXT               = 3
 
 GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 
@@ -35,9 +36,9 @@ GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 @st.cache_resource
 def load_arca_engine():
     """Memuat model embedding, FAISS index, dan dataframe ke memori."""
-    model = SentenceTransformer('paraphrase-multilingual-mpnet-base-v2')
-    index = faiss.read_index("data/pojk_regulasi_only.index")
-    df    = pd.read_pickle("data/pojk_regulasi_only_df.pkl")
+    model  = SentenceTransformer('paraphrase-multilingual-mpnet-base-v2')
+    index  = faiss.read_index("data/pojk_regulasi_only.index")
+    df     = pd.read_pickle("data/pojk_regulasi_only_df.pkl")
     client = Groq(api_key=GROQ_API_KEY)
     return model, index, df, client
 
@@ -48,35 +49,36 @@ with st.spinner("⏳ Menginisialisasi ARCA..."):
 # FUNGSI RAG
 # ===================================================================
 def search_pojk(query, k=TOP_K):
-    """
-    Melakukan semantic search ke FAISS index.
-    Mengembalikan dataframe hasil retrieval dengan kolom 'distance'.
-    """
+    """Melakukan semantic search ke FAISS index."""
     query_vector = model.encode([query])
-    D, I = index.search(query_vector, k)
-    results_df = df.iloc[I[0]].copy()
+    D, I         = index.search(query_vector, k)
+    results_df   = df.iloc[I[0]].copy()
     results_df['distance'] = D[0]
     return results_df
 
 def retrieve_context(query):
     """
-    Pipeline retrieval dengan threshold tunggal T5.5.
-    Pertanyaan di luar POJK 11 akan menghasilkan DataFrame kosong.
+    Pipeline retrieval dengan dua threshold:
+    - T5.5: Sangat relevan, ambil semua yang lolos
+    - T7.0: Fallback, ambil top-3 jika tidak ada yang lolos T5.5
+    - Di luar T7.0: Tolak, pertanyaan di luar cakupan POJK 11
     """
-    raw_results   = search_pojk(query)
-    relevant      = raw_results[raw_results['distance'] <= THRESHOLD]
+    raw_results = search_pojk(query)
 
-    if relevant.empty:
-        return pd.DataFrame(), raw_results
+    highly_relevant = raw_results[raw_results['distance'] <= THRESHOLD_HIGHLY_RELEVANT]
+    if not highly_relevant.empty:
+        return highly_relevant.head(MAX_CONTEXT), raw_results
 
-    final_context = relevant.head(MAX_CONTEXT)
-    return final_context, raw_results
+    fallback = raw_results[raw_results['distance'] <= THRESHOLD_FALLBACK]
+    if not fallback.empty:
+        return fallback.head(3), raw_results
+
+    return pd.DataFrame(), raw_results
 
 def generate_answer_stream(messages, context_list):
     """
-    Mengirim konteks regulasi dan riwayat percakapan ke LLM via Groq API.
-    Menggunakan streaming agar respons muncul bertahap.
-    Menghapus tag <think> dari output model reasoning Qwen.
+    Mengirim konteks dan riwayat ke LLM via Groq API dengan streaming.
+    Menghapus tag <think> dari output model reasoning Qwen secara real-time.
     """
     context_str = "\n\n---\n\n".join(context_list)
 
@@ -88,8 +90,8 @@ def generate_answer_stream(messages, context_list):
             "tentang Penyelenggaraan Teknologi Informasi oleh Bank Umum.\n\n"
             "ATURAN KETAT:\n"
             "1. Jawab HANYA berdasarkan KONTEKS REGULASI yang disediakan di bawah ini.\n"
-            "2. Jika informasi tidak ada dalam konteks, nyatakan secara eksplisit: "
-            "'Informasi tersebut tidak tersedia dalam regulasi yang dirujuk.'\n"
+            "2. Jika informasi tidak ada dalam konteks, nyatakan secara eksplisit bahwa "
+            "informasi tersebut tidak tersedia dalam regulasi yang dirujuk.\n"
             "3. Selalu sebutkan pasal yang menjadi dasar jawaban Anda.\n"
             "4. Gunakan bahasa profesional, ringkas, dan to-the-point.\n"
             "5. Gunakan Bold (**teks**) dan bullet points untuk keterbacaan.\n"
@@ -100,7 +102,6 @@ def generate_answer_stream(messages, context_list):
         )
     }
 
-    # Batasi riwayat chat ke 6 pesan terakhir agar tidak melebihi konteks LLM
     limited_messages = messages[-6:] if len(messages) > 6 else messages
     full_messages    = [system_prompt] + limited_messages
 
@@ -112,9 +113,8 @@ def generate_answer_stream(messages, context_list):
         stream=True
     )
 
-    # Filter tag <think> dari model reasoning Qwen secara real-time
-    is_thinking  = False
-    buffer       = ""
+    is_thinking = False
+    buffer      = ""
 
     for chunk in completion:
         content = chunk.choices[0].delta.content
@@ -123,12 +123,10 @@ def generate_answer_stream(messages, context_list):
 
         buffer += content
 
-        # Deteksi dan skip blok <think>...</think>
         if "<think>" in buffer:
             is_thinking = True
         if "</think>" in buffer:
-            is_thinking  = False
-            # Hapus semua konten <think>...</think> dari buffer
+            is_thinking = False
             buffer = re.sub(r'<think>.*?</think>', '', buffer, flags=re.DOTALL)
 
         if not is_thinking and buffer:
@@ -136,46 +134,18 @@ def generate_answer_stream(messages, context_list):
             buffer = ""
             time.sleep(0.01)
 
-    # Flush sisa buffer
     if buffer and not is_thinking:
         clean = re.sub(r'<think>.*?</think>', '', buffer, flags=re.DOTALL).strip()
         if clean:
             yield clean
 
 # ===================================================================
-# TAMPILAN ANTARMUKA (USER INTERFACE)
+# TAMPILAN ANTARMUKA
 # ===================================================================
-
-# --- CSS Custom ---
-st.markdown("""
-<style>
-    /* Sembunyikan footer Streamlit */
-    footer {visibility: hidden;}
-
-    /* Badge sistem */
-    .system-badge {
-        background: #1a1a2e;
-        color: #e0e0e0;
-        padding: 4px 10px;
-        border-radius: 20px;
-        font-size: 11px;
-        border: 1px solid #333;
-        display: inline-block;
-        margin: 2px;
-    }
-    .badge-green { border-color: #2ecc71; color: #2ecc71; }
-    .badge-blue  { border-color: #3498db; color: #3498db; }
-    .badge-gray  { border-color: #95a5a6; color: #95a5a6; }
-</style>
-""", unsafe_allow_html=True)
-
-# --- Header ---
 st.title("🤖 ARCA")
-st.caption("**Audit Regulator Chat Assistant** · POJK No. 11/03/2022")
+st.caption("**Audit Regulation Chat Assistant** · POJK No. 11/POJK.03/2022")
 
-# --- Sidebar ---
 with st.sidebar:
-    # Template Pertanyaan
     st.subheader("📝 Template Pertanyaan")
     st.write("Gunakan pola berikut untuk hasil optimal:")
 
@@ -190,15 +160,14 @@ with st.sidebar:
     with st.expander("5. Pertanyaan Lanjutan"):
         st.code("Lalu, bagaimana teknis pelaksanaannya?", language=None)
 
+    st.divider()
     if st.button("🗑️ Hapus Riwayat Chat", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
 
-# --- Area Chat Utama ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Pesan sambutan jika belum ada riwayat
 if not st.session_state.messages:
     with st.chat_message("assistant"):
         st.markdown(
@@ -209,7 +178,6 @@ if not st.session_state.messages:
             "Gunakan template di sidebar untuk hasil yang lebih optimal."
         )
 
-# Tampilkan riwayat chat
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
@@ -217,53 +185,40 @@ for message in st.session_state.messages:
             with st.expander("📚 Lihat Referensi Pasal"):
                 st.markdown(message["references"])
 
-# --- Input Chat ---
 if prompt := st.chat_input("Tanyakan sesuatu tentang POJK 11..."):
 
-    # Tampilkan pesan user
     st.chat_message("user").markdown(prompt)
 
     with st.chat_message("assistant"):
 
-        # 1. RETRIEVAL
         with st.spinner("🔍 Menelusuri regulasi..."):
             final_context_df, raw_results = retrieve_context(prompt)
 
-        # 2. GENERATION
         if not final_context_df.empty:
             context_list = final_context_df['teks_konten'].tolist()
 
-            # Siapkan riwayat untuk LLM
             history = [
                 {"role": m["role"], "content": m["content"]}
                 for m in st.session_state.messages
             ]
             history.append({"role": "user", "content": prompt})
 
-            # Streaming response
             response = st.write_stream(
                 generate_answer_stream(history, context_list)
             )
 
-            # Siapkan referensi pasal
-            display_df   = final_context_df.drop_duplicates(
+            display_df     = final_context_df.drop_duplicates(
                 subset=['id_sumber']
             ).head(MAX_CONTEXT)
-
             source_details = "**Referensi Pasal Terkait:**\n\n"
             for _, row in display_df.iterrows():
                 snippet = row['teks_konten'][:400].replace('\n', ' ')
-                jarak   = round(row['distance'], 3)
-                source_details += (
-                    f"📍 **{row['id_sumber']}** "
-                    f"> {snippet}...\n\n"
-                )
+                source_details += f"📍 **{row['id_sumber']}**\n> {snippet}...\n\n"
 
             with st.expander("📚 Lihat Referensi Pasal"):
                 st.markdown(source_details)
 
         else:
-            # Pertanyaan di luar cakupan POJK 11
             response = (
                 "Maaf, ARCA tidak menemukan rujukan yang relevan dalam "
                 "**POJK No. 11/POJK.03/2022** untuk pertanyaan tersebut.\n\n"
@@ -274,15 +229,8 @@ if prompt := st.chat_input("Tanyakan sesuatu tentang POJK 11..."):
             st.markdown(response)
             source_details = None
 
-    # 3. SIMPAN KE RIWAYAT
-    st.session_state.messages.append({
-        "role": "user",
-        "content": prompt
-    })
-    assistant_msg = {
-        "role": "assistant",
-        "content": response
-    }
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    assistant_msg = {"role": "assistant", "content": response}
     if source_details:
         assistant_msg["references"] = source_details
     st.session_state.messages.append(assistant_msg)
