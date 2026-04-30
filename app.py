@@ -241,6 +241,13 @@ if prompt := st.chat_input("Tanyakan sesuatu pada ARCA"):
             else:
                 # Tidak ada referensi yang cukup relevan
                 source_details = None
+            
+            # DEBUG — hapus setelah selesai cek
+            st.write(f"LLM context: {len(context_for_llm)} chunk")
+            st.write(f"Display context: {len(context_for_display)} chunk")
+            if not raw_results.empty:
+                st.write(f"Jarak terdekat: {raw_results['distance'].min():.4f}")
+                st.write(raw_results[['id_sumber', 'distance']].head(5))
 
         else:
             # Benar-benar di luar domain
